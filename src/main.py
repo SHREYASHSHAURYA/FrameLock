@@ -133,7 +133,7 @@ def main():
                 x, y, a = trajectory.update(dx, dy, da)
 
                 if True:
-                    smoothed = trajectory.smooth()
+                    smoothed = trajectory.smooth_kalman()
                     sx, sy, sa = smoothed[-1]
 
                     if len(trajectory.trajectory) > 1:
