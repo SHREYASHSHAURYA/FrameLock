@@ -222,7 +222,12 @@ def main():
                     elif mode == "reflection":
                         output = cv2.flip(frame, 1)
                     else:
-                        output = stabilized
+                        zoom = 1.15
+                        zh, zw = int(fh / zoom), int(fw / zoom)
+                        zy, zx = (fh - zh) // 2, (fw - zw) // 2
+                        output = cv2.resize(
+                            stabilized[zy : zy + zh, zx : zx + zw], (fw, fh)
+                        )
 
                     combined_frame = np.hstack((frame, output))
 
