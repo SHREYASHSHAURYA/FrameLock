@@ -21,16 +21,25 @@ Such instability increases cognitive load on surgeons, reduces visual clarity du
 
 ## Features
 
-- Real-time side-by-side comparison of original and stabilized video
-- Region of Interest (ROI) detection using Laplacian variance — anatomy-aware, focuses on the most active surgical region
-- Frame-to-frame motion estimation using optical flow and affine transformation
-- Kalman filter-based trajectory smoothing for accurate, low-latency correction
-- Support for all core geometric transformations — translation, rotation, scaling, affine, perspective, and reflection
-- Edge artifact handling via border cropping and resizing
-- Quantitative evaluation — centroid displacement metrics per video and averaged across dataset
-- Visual evaluation — displacement plot showing raw vs stabilized motion over time
-- Multi-video batch processing with per-video and aggregate metrics
-- Interactive mode switching during playback via keyboard shortcuts
+- Real-time side-by-side display of original and stabilized video using `VideoDisplay` and `ComparisonPanel` (`src/visualization_utils.py`)
+- Anatomy-aware ROI selection (4×4 grid Laplacian variance, smoothed track) (`src/roi.py`)
+- Visual feature detection with Shi-Tomasi corners and adaptive recovery (`src/feature_detection.py`)
+- Lucas-Kanade optical flow tracking and robust matching (`src/optical_flow.py`)
+- Affine motion estimation from feature correspondences (`src/motion_estimation.py`)
+- Kalman-filter based trajectory smoothing (`src/smoothing.py`)
+- Modular transformation primitives: translation, rotation, scaling, affine, perspective, reflection (`src/transformations.py`)
+- Interactive transformation demo modes (keyboard 0–6) to visualize each geometric operation
+- Output video writer saves side-by-side results to `data/output/*.mp4`
+- Border artifact removal by cropping/resize after warp
+- Per-video and ROI displacement scoring (`src/evaluation.py`)
+- Detailed motion metrics including raw/stabilized mean, std, max, and percent improvement (`src/advanced_metrics.py`)
+- Motion intensity timeline and regional heatmap (`src/advanced_metrics.py`)
+- Multi-panel analytics (time series, component plots, phase plot, histogram) (`src/advanced_metrics.py`)
+- Timeline preview strip with thumbnail frames and motion color bar (`src/advanced_metrics.py`)
+- Batch dashboard integration with progress bar summary and per-video cards (`src/batch_dashboard.py`)
+- Statistics panel with per-video table, aggregate values, and before/after comparison panel (`src/batch_dashboard.py`)
+- Human-readable console printout of overall average results
+- Runs across all `.mp4` files in `data/input` and persistent logging of metrics
 
 ---
 
@@ -50,7 +59,10 @@ FrameLock/
 │   ├── smoothing.py            # Kalman filter trajectory smoothing
 │   ├── roi.py                  # Anatomy-aware ROI detection
 │   ├── transformations.py      # Geometric transformation matrices
-│   └── evaluation.py           # Motion metrics and displacement plotting
+│   ├── evaluation.py           # Motion metrics and displacement plotting
+│   ├── visualization_utils.py  # HUD, feature overlays, comparison panel
+│   ├── advanced_metrics.py     # Extended metrics, heatmaps, and analytics plot helpers
+│   └── batch_dashboard.py      # Batch processing dashboard and summary visual panels
 ├── README.md
 └── .gitignore
 ```

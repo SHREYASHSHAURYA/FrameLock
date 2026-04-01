@@ -1,6 +1,7 @@
 import os
 import cv2
 import numpy as np
+import time
 from video_io import VideoReader, VideoDisplay
 from feature_detection import convert_to_grayscale, detect_features
 from optical_flow import track_features
@@ -15,6 +16,14 @@ from transformations import (
     apply_affine,
     apply_perspective,
 )
+from visualization_utils import (
+    HUDOverlay,
+    FeatureTrackingVisualizer,
+    ComparisonPanel,
+    KeyboardHint,
+)
+from advanced_metrics import AdvancedMetrics
+from batch_dashboard import BatchDashboard, StatisticsPanel
 
 
 def main():
@@ -26,6 +35,9 @@ def main():
     all_stab = []
     all_roi_raw = []
     all_roi_stab = []
+
+    # Initialize batch dashboard
+    batch_dashboard = BatchDashboard(len(video_files))
 
     for video_name in video_files:
         video_path = os.path.join(input_folder, video_name)
@@ -39,6 +51,9 @@ def main():
         output_path = os.path.join(
             base_dir, "..", "data", "output", f"{name}_output.mp4"
         )
+
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         ret, temp_frame = reader.read_frame()
         if not ret:
@@ -61,6 +76,12 @@ def main():
         roi_module._frame_count = 0
 
         mode = "final"
+
+        # Initialize HUD and visualization tools
+        hud_overlay = HUDOverlay(w, h)
+        frame_tracking_viz = FeatureTrackingVisualizer()
+        start_time = time.time()
+        total_frames_estimate = int(reader.cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 300
 
         ret, prev_frame = reader.read_frame()
         if not ret:
@@ -107,6 +128,22 @@ def main():
                 if len(roi_prev) < 10:
                     prev_points = detect_features(prev_gray)
                     combined_frame = np.hstack((frame, frame))
+                    raw_disp, stab_disp = evaluator.compute_score()
+                    hud_metrics = {
+                        "frame_count": frame_count,
+                        "total_frames": total_frames_estimate,
+                        "current_dx": 0,
+                        "current_dy": 0,
+                        "raw_displacement": raw_disp,
+                        "stabilized_displacement": stab_disp,
+                        "improvement_pct": 0,
+                        "fps": frame_count / max(time.time() - start_time, 0.001),
+                        "tracked_features": 0,
+                    }
+                    combined_frame = hud_overlay.add_hud(combined_frame, hud_metrics)
+                    combined_frame = KeyboardHint.add_controls_hint(
+                        combined_frame, mode
+                    )
                     display.show(combined_frame)
                     out.write(combined_frame)
                     prev_gray = curr_gray.copy()
@@ -118,6 +155,22 @@ def main():
                 if prev_pts is None or len(prev_pts) < 10:
                     prev_points = detect_features(prev_gray)
                     combined_frame = np.hstack((frame, frame))
+                    raw_disp, stab_disp = evaluator.compute_score()
+                    hud_metrics = {
+                        "frame_count": frame_count,
+                        "total_frames": total_frames_estimate,
+                        "current_dx": 0,
+                        "current_dy": 0,
+                        "raw_displacement": raw_disp,
+                        "stabilized_displacement": stab_disp,
+                        "improvement_pct": 0,
+                        "fps": frame_count / max(time.time() - start_time, 0.001),
+                        "tracked_features": 0,
+                    }
+                    combined_frame = hud_overlay.add_hud(combined_frame, hud_metrics)
+                    combined_frame = KeyboardHint.add_controls_hint(
+                        combined_frame, mode
+                    )
                     display.show(combined_frame)
                     out.write(combined_frame)
                     prev_gray = curr_gray.copy()
@@ -231,36 +284,104 @@ def main():
 
                     combined_frame = np.hstack((frame, output))
 
-                    font_scale = fw / 640
+                    # Add labels
+                    label_font_scale = max(0.8, fw / 1024)
+                    label_thickness = 3
+
+                    # Left label
                     cv2.putText(
                         combined_frame,
                         "ORIGINAL",
-                        (50, 100),
+                        (15, 100),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        font_scale,
+                        label_font_scale,
                         (0, 255, 0),
-                        2,
+                        label_thickness,
                     )
+
+                    # Right label
                     cv2.putText(
                         combined_frame,
                         "STABILIZED",
-                        (fw + 50, 100),
+                        (fw + 15, 50),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        font_scale,
+                        label_font_scale,
                         (0, 255, 0),
-                        2,
+                        label_thickness,
+                    )
+
+                    # Add HUD overlay with metrics
+                    raw_disp, stab_disp = evaluator.compute_score()
+                    roi_raw, roi_stab = roi_evaluator.compute_score()
+                    improvement_pct = (
+                        ((roi_raw - roi_stab) / roi_raw * 100) if roi_raw > 0 else 0
+                    )
+                    elapsed_time = time.time() - start_time
+                    current_fps = frame_count / max(elapsed_time, 0.001)
+
+                    hud_metrics = {
+                        "frame_count": frame_count,
+                        "total_frames": total_frames_estimate,
+                        "current_dx": dx,
+                        "current_dy": dy,
+                        "raw_displacement": raw_disp,
+                        "stabilized_displacement": stab_disp,
+                        "roi_raw_displacement": roi_raw,
+                        "roi_stabilized_displacement": roi_stab,
+                        "improvement_pct": improvement_pct,
+                        "fps": current_fps,
+                        "tracked_features": (
+                            len(prev_pts) if prev_pts is not None else 0
+                        ),
+                    }
+                    combined_frame = hud_overlay.add_hud(combined_frame, hud_metrics)
+                    combined_frame = hud_overlay.add_progress_bar(
+                        combined_frame, frame_count, total_frames_estimate
+                    )
+                    combined_frame = KeyboardHint.add_controls_hint(
+                        combined_frame, mode
                     )
 
                     display.show(combined_frame)
                     out.write(combined_frame)
                 else:
                     combined_frame = np.hstack((frame, frame))
+                    raw_disp, stab_disp = evaluator.compute_score()
+                    hud_metrics = {
+                        "frame_count": frame_count,
+                        "total_frames": total_frames_estimate,
+                        "current_dx": 0,
+                        "current_dy": 0,
+                        "raw_displacement": raw_disp,
+                        "stabilized_displacement": stab_disp,
+                        "improvement_pct": 0,
+                        "fps": frame_count / max(time.time() - start_time, 0.001),
+                        "tracked_features": 0,
+                    }
+                    combined_frame = hud_overlay.add_hud(combined_frame, hud_metrics)
+                    combined_frame = KeyboardHint.add_controls_hint(
+                        combined_frame, mode
+                    )
                     display.show(combined_frame)
                     out.write(combined_frame)
 
                 prev_points = curr_pts.reshape(-1, 1, 2)
             else:
                 combined_frame = np.hstack((frame, frame))
+                raw_disp, stab_disp = evaluator.compute_score()
+                hud_metrics = {
+                    "frame_count": frame_count,
+                    "total_frames": total_frames_estimate,
+                    "current_dx": 0,
+                    "current_dy": 0,
+                    "raw_displacement": raw_disp,
+                    "stabilized_displacement": stab_disp,
+                    "improvement_pct": 0,
+                    "fps": frame_count / max(time.time() - start_time, 0.001),
+                    "tracked_features": 0,
+                }
+                combined_frame = hud_overlay.add_hud(combined_frame, hud_metrics)
+                combined_frame = KeyboardHint.add_controls_hint(combined_frame, mode)
                 display.show(combined_frame)
                 out.write(combined_frame)
 
@@ -288,16 +409,79 @@ def main():
 
         reader.release()
         cv2.destroyAllWindows()
-        out.release()
-        evaluator.plot_displacement(title=f"{video_name} - Global Displacement")
+        if out is not None:
+            out.release()
+
+        # Displacement plots - ROI only
+        roi_disp = roi_evaluator.plot_displacement(
+            title=f"{video_name} - ROI Displacement"
+        )
+        if roi_disp is not None:
+            cv2.imshow(f"{video_name} - Displacement", roi_disp)
+            while True:
+                if cv2.waitKey(100) & 0xFF == ord("q"):
+                    cv2.destroyWindow(f"{video_name} - Displacement")
+                    break
+
+        # Enhanced visualization features (features 1, 4, 5, 8, 9, 10, 12)
+
+        # Feature 4 & 5: Enhanced multi-panel plot - ROI only
+        roi_analysis = roi_evaluator.plot_multi_panel(
+            title=f"{video_name} - ROI Analysis"
+        )
+        if roi_analysis is not None:
+            cv2.imshow(f"{video_name} - Analysis", roi_analysis)
+            while True:
+                if cv2.waitKey(100) & 0xFF == ord("q"):
+                    cv2.destroyWindow(f"{video_name} - Analysis")
+                    break
+
+        # Feature 9: Motion heatmap visualization - ROI only
+        roi_heatmap_viz = roi_evaluator.create_heatmap_visualization()
+        if roi_heatmap_viz is not None:
+            cv2.imshow(f"{video_name} - Motion Heatmap", roi_heatmap_viz)
+            while True:
+                if cv2.waitKey(100) & 0xFF == ord("q"):
+                    cv2.destroyWindow(f"{video_name} - Motion Heatmap")
+                    break
 
         raw_disp, stab_disp = evaluator.compute_score()
         roi_raw, roi_stab = roi_evaluator.compute_score()
+
+        # Skip visualizations if no motion data
+        if len(evaluator.raw_motion) == 0:
+            print(f"No motion data for {video_name}, skipping visualizations")
+        else:
+            # Feature 12: Before/After comparison panel - ROI only
+            roi_comparison_panel = StatisticsPanel.create_before_after_comparison(
+                roi_evaluator.raw_motion,
+                roi_evaluator.stabilized_motion,
+                title=f"{video_name} - ROI Before/After Motion Comparison",
+            )
+            cv2.imshow(f"{video_name} - Comparison", roi_comparison_panel)
+            while True:
+                if cv2.waitKey(100) & 0xFF == ord("q"):
+                    cv2.destroyWindow(f"{video_name} - Comparison")
+                    break
+
+        # Feature 8: Summary statistics panel
+        detailed_stats = evaluator.compute_detailed_stats()
 
         print(f"\n===== {video_name} =====")
         print("Raw motion:", raw_disp)
         print("Stabilized motion:", stab_disp)
         print("Improvement:", raw_disp - stab_disp)
+
+        # Print detailed statistics (feature 8)
+        if detailed_stats:
+            print(f"\nDetailed Statistics:")
+            print(
+                f"  Raw - Mean: {detailed_stats['raw_mean']:.3f}, Std: {detailed_stats['raw_std']:.3f}, Max: {detailed_stats['raw_max']:.3f}"
+            )
+            print(
+                f"  Stabilized - Mean: {detailed_stats['stab_mean']:.3f}, Std: {detailed_stats['stab_std']:.3f}, Max: {detailed_stats['stab_max']:.3f}"
+            )
+            print(f"  Improvement: {detailed_stats['improvement_percent']:.1f}%")
 
         print("ROI Raw motion:", roi_raw)
         print("ROI Stabilized motion:", roi_stab)
@@ -308,15 +492,44 @@ def main():
         all_roi_raw.append(roi_raw)
         all_roi_stab.append(roi_stab)
 
+        # Feature 13: Add to batch dashboard
+        avg_features = len(prev_pts) if prev_pts is not None else 0
+        batch_dashboard.add_video_result(
+            video_name, raw_disp, stab_disp, avg_features, roi_raw, roi_stab
+        )
+
     print("\n===== FINAL AVERAGE =====")
 
-    print("Avg Raw motion:", np.mean(all_raw))
-    print("Avg Stabilized motion:", np.mean(all_stab))
-    print("Avg Improvement:", np.mean(all_raw) - np.mean(all_stab))
+    if len(all_raw) > 0:
+        print("Avg Raw motion:", np.mean(all_raw))
+        print("Avg Stabilized motion:", np.mean(all_stab))
+        print("Avg Improvement:", np.mean(all_raw) - np.mean(all_stab))
+    else:
+        print("No raw motion data collected")
 
-    print("\nAvg ROI Raw motion:", np.mean(all_roi_raw))
-    print("Avg ROI Stabilized motion:", np.mean(all_roi_stab))
-    print("Avg ROI Improvement:", np.mean(all_roi_raw) - np.mean(all_roi_stab))
+    if len(all_roi_raw) > 0:
+        print("\nAvg ROI Raw motion:", np.mean(all_roi_raw))
+        print("Avg ROI Stabilized motion:", np.mean(all_roi_stab))
+        print("Avg ROI Improvement:", np.mean(all_roi_raw) - np.mean(all_roi_stab))
+    else:
+        print("\nNo ROI motion data collected")
+
+    # Feature 13: Display batch processing dashboard and summary statistics panel
+    # Show progress panel
+    progress_panel = batch_dashboard.create_progress_display()
+    cv2.imshow("Batch Processing - Complete", progress_panel)
+    while True:
+        if cv2.waitKey(100) & 0xFF == ord("q"):
+            cv2.destroyWindow("Batch Processing - Complete")
+            break
+
+    # Show summary panel
+    summary_panel = batch_dashboard.create_summary_panel()
+    cv2.imshow("Batch Processing Summary", summary_panel)
+    while True:
+        if cv2.waitKey(100) & 0xFF == ord("q"):
+            cv2.destroyWindow("Batch Processing Summary")
+            break
 
 
 if __name__ == "__main__":
