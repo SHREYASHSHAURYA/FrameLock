@@ -25,3 +25,10 @@ data/out
 
 # Logs
 *.log
+
+node_modules/
+ui/node_modules/
+
+dist/
+build/
+ui/dist/
