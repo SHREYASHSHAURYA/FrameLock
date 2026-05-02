@@ -40,6 +40,15 @@ Such instability increases cognitive load on surgeons, reduces visual clarity du
 - Statistics panel with per-video table, aggregate values, and before/after comparison panel (`src/batch_dashboard.py`)
 - Human-readable console printout of overall average results
 - Runs across all `.mp4` files in `data/input` and persistent logging of metrics
+- **Web dashboard** — Flask REST API (`src/api.py`) serving MJPEG streams and SSE metrics, with a React frontend (`ui/src/App.jsx`) for real-time monitoring
+- **Live camera mode** — stabilize webcam feed in real time directly from the dashboard
+- **MJPEG dual stream** — simultaneous raw and stabilized video feeds streamed to the browser
+- **Live HUD** — per-frame metrics including displacement, ROI improvement, FPS, and feature count
+- **Displacement graphs** — real-time sparklines for raw vs stabilized motion, X/Y components, ROI displacement, and FPS timeline
+- **Motion intensity heatmap** — live bar chart of per-frame motion intensity
+- **Batch results table** — summary of all processed videos with per-video metrics
+- **Transform mode switcher** — switch between stabilized, translation, rotation, scaling, affine, perspective, and reflection modes live from the UI
+- **Fullscreen video view** — expand any feed to fullscreen overlay with one click
 
 ---
 
@@ -51,7 +60,8 @@ FrameLock/
 │   ├── input/                  # Input video files (.mp4)
 │   └── output/                 # Stabilized output videos
 ├── src/
-│   ├── main.py                 # Main pipeline and processing loop
+│   ├── main.py                 # Main pipeline and processing loop (terminal mode)
+│   ├── api.py                  # Flask REST API — MJPEG streams, SSE events, pipeline control
 │   ├── video_io.py             # Video reading and display
 │   ├── feature_detection.py    # Grayscale conversion and feature detection
 │   ├── optical_flow.py         # Lucas-Kanade optical flow tracking
@@ -63,6 +73,14 @@ FrameLock/
 │   ├── visualization_utils.py  # HUD, feature overlays, comparison panel
 │   ├── advanced_metrics.py     # Extended metrics, heatmaps, and analytics plot helpers
 │   └── batch_dashboard.py      # Batch processing dashboard and summary visual panels
+├── ui/
+│   ├── src/
+│   │   ├── App.jsx             # React dashboard — live feeds, graphs, HUD, batch table
+│   │   ├── main.jsx            # React entry point
+│   │   └── index.css           # Global styles
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.js
 ├── README.md
 └── .gitignore
 ```
@@ -71,7 +89,7 @@ FrameLock/
 
 ## Installation
 
-**Requirements:** Python 3.8+, OpenCV, NumPy
+**Requirements:** Python 3.8+, OpenCV, NumPy, Flask, Node.js 18+
 
 ```bash
 git clone https://github.com/SHREYASHSHAURYA/FrameLock
@@ -79,12 +97,14 @@ cd framelock
 python -m venv venv
 venv\Scripts\activate        # Windows
 source venv/bin/activate     # Linux/macOS
-pip install opencv-python numpy
+pip install opencv-python numpy flask flask-cors waitress
 ```
 
 ---
 
 ## Usage
+
+### Terminal Mode
 
 Place input `.mp4` files in `data/input/`, then run:
 
@@ -94,7 +114,28 @@ python src/main.py
 
 The pipeline processes each video, displays the real-time side-by-side comparison, and saves the stabilized output to `data/output/`. After each video, a displacement plot is shown comparing raw vs stabilized motion over time.
 
-### Keyboard Controls
+### Web Dashboard Mode
+
+**1. Start the API server:**
+
+```bash
+cd src
+python api.py
+```
+
+**2. Start the React frontend:**
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+**3. Open** `http://localhost:5173` in your browser.
+
+From the dashboard you can select any video from `data/input/`, process it with live side-by-side MJPEG streams, monitor real-time metrics, switch transform modes on the fly, and view batch results across all processed videos. A live camera mode is also available for real-time webcam stabilization.
+
+### Keyboard Controls (Terminal Mode)
 
 | Key | Mode                 |
 | --- | -------------------- |
@@ -135,6 +176,10 @@ The correction transform (translation + rotation) is applied via `cv2.warpAffine
 
 The frame is divided into a 4×4 grid. Laplacian variance is computed per block every 15 frames to identify the sharpest, most textured region — the surgical site. The ROI smoothly tracks this region using exponential smoothing (α = 0.95).
 
+### 7. Web API & Streaming
+
+`api.py` runs a Flask server that manages the stabilization pipeline in a background thread. It exposes MJPEG streams for both raw and stabilized frames (`/video_feed/raw`, `/video_feed/stabilized`), an SSE endpoint (`/stream`) for live per-frame metrics, and REST endpoints to start, stop, and switch modes. The React dashboard connects to these endpoints to provide a fully interactive real-time monitoring interface.
+
 ---
 
 ## Evaluation
@@ -157,7 +202,7 @@ Metrics are reported both globally (full frame) and for the ROI (surgical site),
 | surgical2    | 6.26       | 4.15              | 2.06            |
 | surgical3    | 11.41      | 10.50             | 95.15           |
 | surgical4    | 4.82       | 4.02              | 6.11            |
-| **Average**  | **6.65**   | **6.02**          | **23.21**       |
+| **Average**  | **6.65**   | **6.02**          | **23.21%**      |
 
 > ROI improvement significantly exceeds global improvement — confirming the system correctly focuses stabilization on the surgical site while allowing intentional camera movement.
 

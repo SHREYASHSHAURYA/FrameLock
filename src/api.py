@@ -6,6 +6,7 @@ import threading
 import numpy as np
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
+from waitress import serve
 
 import sys
 
@@ -59,14 +60,16 @@ def store_frames(raw_frame, stabilized_frame):
         processing_state["frame_stabilized"] = stab_jpg.tobytes()
 
 
-# ── MJPEG generator — 20 fps cap (0.05 s sleep) ───────────────────────────────
 def _mjpeg_generator(key):
+    last_jpg = None
     while True:
         with processing_state["frame_lock"]:
             jpg = processing_state.get(key)
-        if jpg is not None:
+        if jpg is not None and jpg is not last_jpg:
+            last_jpg = jpg
             yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n")
-        time.sleep(1.0 / processing_state.get("video_fps", 30))
+        else:
+            time.sleep(0.001)
 
 
 @app.route("/video_feed/raw")
@@ -444,4 +447,5 @@ def _pipeline(source, initial_mode):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    print("Server running on http://0.0.0.0:5000")
+    serve(app, host="0.0.0.0", port=5000, threads=8)

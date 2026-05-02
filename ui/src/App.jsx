@@ -1313,8 +1313,8 @@ function DatasetPage({
                   }}
                 >
                   {[
-                    ["raw", fmt2(sum.raw_disp) + "px", "#ff6b6b"],
-                    ["stab", fmt2(sum.stab_disp) + "px", "#00e5a0"],
+                    ["raw", fmt2(sum.roi_raw) + "px", "#ff6b6b"],
+                    ["stab", fmt2(sum.roi_stab) + "px", "#00e5a0"],
                     [
                       "impr.",
                       pct(sum.improvement),
